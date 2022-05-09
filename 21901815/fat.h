@@ -3,6 +3,20 @@
 #define FAT_LENGTH_IN_SECTORS 1016
 #define DATA_START_SECTOR 32 + 2 * FAT_LENGTH_IN_SECTORS
 
+#define VOLUME_LABEL_OFFSET 71
+#define VOLUME_LABEL_SIZE 11
+#define FS_TYPE_OFFSET 82
+#define FS_TYPE_SIZE 8
+#define NO_OF_SECTORS_IN_DISK_OFFSET 32
+#define NO_OF_SECTORS_IN_DISK_SIZE 4
+#define SECTOR_SIZE_IN_BYTES_OFFSET 11
+#define SECTOR_SIZE_IN_BYTES_SIZE 2
+#define RESERVED_SECTORS_OFFSET 14
+#define RESERVED_SECTORS_SIZE 2
+#define SECTORS_PER_FAT_OFFSET 36
+#define SECTORS_PER_FAT_SIZE 4
+
+
 #define MODE_PRINT_VOLUME_INFO 1
 #define MODE_PRINT_SECTOR 2
 #define MODE_PRINT_CLUSTER 3
@@ -28,4 +42,5 @@ typedef struct params {
 
 void process_args(int argc, char** argv, params* p);
 
+void print_image_info(); 
 
