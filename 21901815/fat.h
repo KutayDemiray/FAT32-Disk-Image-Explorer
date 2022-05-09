@@ -44,3 +44,5 @@ void process_args(int argc, char** argv, params* p);
 
 void print_image_info(); 
 
+unsigned int find_start(unsigned short int start, unsigned short int starthi);
+
