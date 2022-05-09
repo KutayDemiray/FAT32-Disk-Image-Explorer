@@ -64,6 +64,7 @@ int main(int argc, char** argv) {
 			printf("\n");
 		} 
 	}
+	
 	return 0;
 }
 
@@ -72,3 +73,74 @@ void process_args(int argc, char** argv, params* p) {
 }
 
 void print_image_info(int fd);
+
+// 4. fat DISKIMAGE -t
+void print_name_recursive(int fd, int cnum, unsigned char* buf){
+	struct msdos_dir_entry* cluster;
+	readcluster(fd, buf, cnum);
+	cluster = (msdos_dir_entry*) buf;
+	
+	int i;
+	for (i = 0; i <32; i++ ){
+		if (cluster->attr == 0x08 || cluster->attr == 0x10) { // the allocation belongs to a directory
+			printf("(d)\t%s\n", cluster->name);
+			
+			// next cluster information retrieval
+			unsigned short int start = (unsigned short int) cluster->start;
+			unsigned short int starthi = (unsigned short int) cluster->starthi;
+			unsigned int start_address = find_start(start, starthi);
+			print_name_recursive(fd, start_address, buf);
+		}
+		else if (cluster->attr <= 0x07){ // the allocation belongs to a file
+			printf("(f)\t%s\n", cluster->name);
+		}
+		
+		cluster++;	
+	}
+}
+
+// 5. fat DISKIMAGE -a PATH
+void print_content_recursive(int fd, int cnum, unsigned char* buf, char* path){
+	struct msdos_dir_entry* cluster;
+	readcluster(fd, buf, cnum);
+	cluster = (msdos_dir_entry*) buf;
+	int i;
+	for (i = 0; i<32; i++){
+		if (cluster-> name != path){
+			if (cluster->attr == 0x08 || cluster->attr == 0x10){
+				unsigned short int start = (unsigned short int) cluster->start;
+				unsigned short int starthi = (unsigned short int) cluster->starthi;
+				unsigned int start_address = find_start(start, starthi);
+				print_content_recursive(fd, start_address, buf, path);
+			}
+		}
+		else {
+			
+		}
+		
+	}
+}
+
+// helper for 4 and 5
+unsigned int find_start(unsigned short int start, unsigned short int starthi){
+	unsigned int start_address;
+	unsigned short int tmp = start;
+	unsigned short int tmp2 = tmp & 0x00FF;
+	tmp2 = tmp2 << 8;
+	tmp = tmp & 0xFF00;
+	tmp = tmp >> 8; 
+	unsigned short int lsp = tmp | tmp2;
+	tmp = starthi;
+	tmp2 = tmp & 0x00FF;
+	tmp2 = tmp2 << 8;
+	tmp = tmp & 0xFF00;
+	tmp = tmp >> 8; 
+	unsigned short int msp = tmp |tmp2;
+	unsigned int tmp3 = (unsigned int)msp;
+	tmp3 = tmp3 << 16;
+	start_address = (unsigned int) lsp;
+	start_address = start_address | tmp3;
+	return start_address;
+}
+
+
