@@ -332,9 +332,22 @@ void print_content_recursive(int fd, int cnum, unsigned char* buf, char* path){
 			}
 		}
 		else {
+			// The path is found. Now we need to traverse the file content.
+			unsigned int bit_size = (cluster->size)*8; 
 			
+			// find the data start
+			unsigned short int start = (unsigned short int) cluster->start;
+			unsigned short int starthi = (unsigned short int) cluster->starthi;
+			unsigned int start_address = find_start(start, starthi);
+			readcluster(fd, buf, start_address);
+			cluster = (struct msdos_dir_entry*) buf;
+			
+			// print the file content
+			int j;
+			for (j = 0; j < bit_size; j++){
+				printf("%c", cluster[j]);
+			}
 		}
-		
 	}
 }
 
