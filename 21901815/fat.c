@@ -178,19 +178,29 @@ void traverse(unsigned int dir_cluster, char path[120], unsigned int pathlen) {
 				str_trimcopy(ext, (char *) &(dp->name[8]), 3);		
 				printf("(f) %s%s.%s\n", path, name, ext);
 			}
+			else if ((char) dp->name[0] == '.') {// dentry to self or parent, just print (don't traverse)
+				printf("(d) %s%s\n", path, name);
+			}
 			else if (dp->attr == (unsigned char) 0x10) { // subdirectory
 				// save directory cluster to recursion queue
 				unsigned short int tmp[2];
 				tmp[1] = dp->starthi;
 				tmp[0] = dp->start;
-				subdirs[subdir_count].cluster = *((unsigned int *)(tmp));
-				subdirs[subdir_count].namelen = str_trimcopy(subdirs[subdir_count].name, name, namelen);
-				subdir_count++;
+				unsigned int nextclus = *((unsigned int *)(tmp));
+				char nextpath[120];
+				str_trimcopy(nextpath, path, pathlen);
+				unsigned int nextlen = str_concat(nextpath, pathlen, name, namelen);
+				nextlen = str_concat(nextpath, nextlen, "/", 1);
+				printf("(d) %s\n", nextpath);
+				traverse(nextclus, nextpath, nextlen);
+				readcluster(fd, cluster, dir_cluster);
 			}
 		}
 		dp++;
 	}
-
+	
+	
+	/*
 	char nextpath[120];
 	str_trimcopy(nextpath, path, pathlen);
 	for (i = 0; i < subdir_count; i++) {
@@ -201,6 +211,7 @@ void traverse(unsigned int dir_cluster, char path[120], unsigned int pathlen) {
 			traverse(subdirs[i].cluster, nextpath, nextlen);
 		}
 	}
+	*/
 }
 
 void read_fat(unsigned int *arr, unsigned int fat_sectors, unsigned int entries_per_sector) {
