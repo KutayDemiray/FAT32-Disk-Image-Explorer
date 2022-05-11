@@ -48,13 +48,30 @@ typedef struct params {
 	
 } params;
 
+typedef struct subdirectory {
+	char name[9];
+	unsigned int namelen;
+	unsigned int cluster;
+} subdirectory;
+
+typedef struct datetime {
+	unsigned char second;
+	unsigned char minute;
+	unsigned char hour;
+	unsigned char day;
+	unsigned char month;
+	unsigned short int year;
+} datetime;
+
 void process_args(int argc, char** argv, params* p);
 
 void print_image_info();
 void print_sector(unsigned int sector_no);
 void print_cluster(unsigned int cluster_no, unsigned int global_offset);
 void traverse(unsigned int dir_cluster, char path[120], unsigned int pathlen);
+void print_file_content(char *path);
 void print_file_bytes(char *path);
+void list_dir(char *path);
 
 unsigned int find_start(unsigned short int start, unsigned short int starthi);
 
@@ -149,3 +166,14 @@ int path_split(char **tokens, char *path, char *delimiter) {
 }
 
 void read_fat(unsigned int *arr, unsigned int fat_sectors, unsigned int entries_per_sector); // implemented in fat.c
+
+datetime read_datetime(unsigned short int date, unsigned short int time) {
+	datetime dt;
+	dt.second = 2 * (char)(time & 0x1F); // 0000 0000 0001 1111
+	dt.minute = (char)((time & 0x7E0) >> 5); // 0000 0111 1110 0000
+	dt.hour = (char)((time & 0xF800) >> 11); // 1111 1000 0000 0000
+	dt.day = (char)(date & 0x1F); // 0000 0000 0001 1111
+	dt.month = (char)((date & 0x1E0) >> 5); // 0000 0001 1110 0000
+	dt.year = 1980 + ((date & 0xFE00) >> 9); // 1111 1110 0000 0000
+	return dt;
+}

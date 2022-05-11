@@ -28,8 +28,14 @@ int main(int argc, char** argv) {
 		struct fat_boot_sector *bp = (struct fat_boot_sector *) sector;
 		traverse(bp->fat32.root_cluster, "/", 1);
 	}
-	else if(strcmp(p.mode, "-a") == 0) {
+	else if (strcmp(p.mode, "-a") == 0) {
+		print_file_content(argv[3]);
+	}
+	else if (strcmp(p.mode, "-b") == 0) {
 		print_file_bytes(argv[3]);
+	}
+	else if (strcmp(p.mode, "-l") == 0) {
+		list_dir(argv[3]);
 	}
 	
 	// always check the return values
@@ -147,13 +153,11 @@ void print_cluster(unsigned int cluster_no, unsigned int global_offset) {
 }
 
 // fat DISKIMAGE -t
-typedef struct subdirectory {
-	char name[9];
-	unsigned int namelen;
-	unsigned int cluster;
-} subdirectory;
-
 void traverse(unsigned int dir_cluster, char path[120], unsigned int pathlen) {
+	readsector(fd, sector, 0);
+	struct fat_boot_sector *bp = (struct fat_boot_sector *) sector; 
+	unsigned int dentry_per_clus = ((unsigned short int *) bp->sector_size)[0] * bp->sec_per_clus / 32;
+
 	subdirectory subdirs[25];
 	unsigned int subdir_count = 0;
 	
@@ -161,8 +165,8 @@ void traverse(unsigned int dir_cluster, char path[120], unsigned int pathlen) {
 	
 	struct msdos_dir_entry *dp = (struct msdos_dir_entry *) cluster;
 	
-	int i;
-	for (i = 0; i < 32; i++) {
+	unsigned int i;
+	for (i = 0; i < dentry_per_clus; i++) {
 		if ((unsigned char) dp->name[0] != (unsigned char) 0x00 && (unsigned char) dp->name[0] != (unsigned char) 0xe5) { // dir entry is used (not uninitialized or deleted)
 			char name[9];
 			name[8] = '\0';
@@ -199,12 +203,11 @@ void traverse(unsigned int dir_cluster, char path[120], unsigned int pathlen) {
 	}
 }
 
-// ./fat DISKIMAGE -a PATH
 void read_fat(unsigned int *arr, unsigned int fat_sectors, unsigned int entries_per_sector) {
 	int i;
 	int count = 0;
 	for (i = 0; i < fat_sectors; i++) {
-		readsector(fd, sector, 32 + i);
+		readsector(fd, sector, 32 + i); // fat starts at sector 32
 		unsigned int *cur_sector = (unsigned int *) sector;
 		int j;
 		for (j = 0; j < entries_per_sector; j++) {
@@ -213,9 +216,10 @@ void read_fat(unsigned int *arr, unsigned int fat_sectors, unsigned int entries_
 	}
 }
 
-void print_file_bytes(char* path) {
+// ./fat DISKIMAGE -a PATH
+void print_file_content(char *path) {
 	char str[120];
-	unsigned int fullpathlen = str_trimcopy(str, path, strlen(path)); 
+	str_trimcopy(str, path, strlen(path)); 
 	char **names = malloc(11 * sizeof(char *)); // max directory tree depth is 10 (+ 1 for good measure)
 	
 	unsigned int namecount = path_split(names, str, "/");
@@ -223,6 +227,7 @@ void print_file_bytes(char* path) {
 	readsector(fd, sector, 0);
 	struct fat_boot_sector *bp = (struct fat_boot_sector *) sector;
 	unsigned int cluster_no = bp->fat32.root_cluster;
+	unsigned int dentry_per_clus = ((unsigned short int *) bp->sector_size)[0]  * bp->sec_per_clus / 32;
 	
 	// get to the directory containing file
 	int i, j, cur = 0;
@@ -231,8 +236,8 @@ void print_file_bytes(char* path) {
 		readcluster(fd, cluster, cluster_no);
 		//printf("read %u\n", cluster_no);
 		struct msdos_dir_entry *dp = (struct msdos_dir_entry *) cluster;
-		for (j = 0; j < 32; j++) {
-			str_trimcopy(name, dp->name, 8);
+		for (j = 0; j < dentry_per_clus; j++) {
+			str_trimcopy(name, (char *) dp->name, 8);
 			if (strcmp(name, names[cur]) == 0) { // found directory entry with next directory
 				//printf("found %s\n", name);
 				unsigned short int tmp[2];
@@ -252,9 +257,88 @@ void print_file_bytes(char* path) {
 	//printf("===\n\n");
 	struct msdos_dir_entry *dp = (struct msdos_dir_entry *) cluster;
 	char ext[4];
-	for (j = 0; j < 32; j++) {
-		str_trimcopy(name, dp->name, 8);
-		str_trimcopy(ext, &(dp->name[8]), 3);
+	for (j = 0; j < dentry_per_clus; j++) {
+		str_trimcopy(name, (char *)dp->name, 8);
+		str_trimcopy(ext, (char *) (&(dp->name[8])), 3);
+		//printf("ext %s\n", ext);
+		str_concat(name, strlen(name), ".", 1);
+		str_concat(name, strlen(name), ext, strlen(ext));
+		//printf("name %s\n", name);
+		if (strcmp(name, names[cur]) == 0) { // found directory entry with next directory
+			//printf("found %s\n", name);
+			unsigned short int tmp[2];
+			tmp[1] = dp->starthi;
+			tmp[0] = dp->start;
+			cluster_no = *((unsigned int *)(tmp));
+			cur++;
+			break;
+		}
+		dp++;
+	}
+	//printf("file first cluster %u\n", cluster_no);
+	// at the start of file
+	unsigned int *fat;
+	readsector(fd, sector, 0);
+	bp = (struct fat_boot_sector *) sector;
+	unsigned int fat_size = bp->fat32.length * ((unsigned short int *) bp->sector_size)[0];
+	fat = malloc(fat_size);
+	read_fat(fat, bp->fat32.length, ((unsigned short int *) bp->sector_size)[0] / 4);
+	
+	while (cluster_no < (unsigned int) 0x0ffffff7) { // indices smaller than 0x0ffffff7 are valid (not EOF or reserved)
+		readcluster(fd, cluster, cluster_no);
+		for (i = 0; i < CLUSTER_SIZE; i++) {
+			printf("%c", cluster[i]);
+		}
+		cluster_no = fat[cluster_no];
+		//printf("cluster %d\n", cluster_no);
+	} 
+}
+
+
+// ./fat DISKIMAGE -b PATH
+void print_file_bytes(char* path) {
+	char str[120];
+	str_trimcopy(str, path, strlen(path)); 
+	char **names = malloc(11 * sizeof(char *)); // max directory tree depth is 10 (+ 1 for good measure)
+	
+	unsigned int namecount = path_split(names, str, "/");
+	//printf("namecount: %d\n", namecount);
+	readsector(fd, sector, 0);
+	struct fat_boot_sector *bp = (struct fat_boot_sector *) sector;
+	unsigned int cluster_no = bp->fat32.root_cluster;
+	unsigned int dentry_per_clus = ((unsigned short int *) bp->sector_size)[0]  * bp->sec_per_clus / 32;
+	
+	// get to the directory containing file
+	int i, j, cur = 0;
+	char name[13];
+	for (i = 0; i < namecount - 1; i++) {
+		readcluster(fd, cluster, cluster_no);
+		//printf("read %u\n", cluster_no);
+		struct msdos_dir_entry *dp = (struct msdos_dir_entry *) cluster;
+		for (j = 0; j < dentry_per_clus; j++) {
+			str_trimcopy(name, (char *)dp->name, 8);
+			if (strcmp(name, names[cur]) == 0) { // found directory entry with next directory
+				//printf("found %s\n", name);
+				unsigned short int tmp[2];
+				tmp[1] = dp->starthi;
+				tmp[0] = dp->start;
+				cluster_no = *((unsigned int *)(tmp));
+				cur++;
+				//printf("next to find: %s\n", names[cur]);
+				break;
+			}
+			dp++;
+		}
+	}
+	 
+	// get to the first cluster of the file
+	readcluster(fd, cluster, cluster_no);
+	//printf("===\n\n");
+	struct msdos_dir_entry *dp = (struct msdos_dir_entry *) cluster;
+	char ext[4];
+	for (j = 0; j < dentry_per_clus; j++) {
+		str_trimcopy(name, (char *) dp->name, 8);
+		str_trimcopy(ext, (char *) &(dp->name[8]), 3);
 		//printf("ext %s\n", ext);
 		str_concat(name, strlen(name), ".", 1);
 		str_concat(name, strlen(name), ext, strlen(ext));
@@ -288,9 +372,74 @@ void print_file_bytes(char* path) {
 	} 
 }
 
+// ./fat DISKIMAGE -l PATH
+void list_dir(char *path) {
+	char str[120];
+	str_trimcopy(str, path, strlen(path)); 
+	char **names = malloc(11 * sizeof(char *)); // max directory tree depth is 10 (+ 1 for good measure)
+	
+	unsigned int namecount = path_split(names, str, "/");
+	//printf("namecount: %d\n", namecount);
+	readsector(fd, sector, 0);
+	struct fat_boot_sector *bp = (struct fat_boot_sector *) sector;
+	unsigned int cluster_no = bp->fat32.root_cluster;
+	unsigned int dentry_per_clus = ((unsigned short int *) bp->sector_size)[0]  * bp->sec_per_clus / 32;
+	//printf("%u\n", dentry_per_clus);
+	
+	// get to the directory containing file
+	int i, j, cur = 0;
+	char name[12];
+	for (i = 0; i < namecount; i++) {
+		readcluster(fd, cluster, cluster_no);
+		//printf("read %u\n", cluster_no);
+		struct msdos_dir_entry *dp = (struct msdos_dir_entry *) cluster;
+		for (j = 0; j < dentry_per_clus; j++) {
+			str_trimcopy(name, (char *)dp->name, 8);
+			if (strcmp(name, names[cur]) == 0) { // found directory entry with next directory
+				//printf("found %s\n", name);
+				unsigned short int tmp[2];
+				tmp[1] = dp->starthi;
+				tmp[0] = dp->start;
+				cluster_no = *((unsigned int *)(tmp));
+				cur++;
+				//printf("next to find: %s\n", names[cur]);
+				break;
+			}
+			dp++;
+		}
+	}
+	
+	// now in target directory, print contents
+	readcluster(fd, cluster, cluster_no);
+	//print_cluster(cluster_no, 0);
+	struct msdos_dir_entry *dp = (struct msdos_dir_entry *) cluster;
+	for (j = 0; j < dentry_per_clus; j++) {
+		//printf("%d\n", j);
+		if ((unsigned char) dp->name[0] != (unsigned char) 0x00 && (unsigned char) dp->name[0] != (unsigned char) 0xe5) { // dir entry is 	used (not uninitialized or deleted)
+			int namelen = str_trimcopy(name, (char *) &(dp->name[0]), 8);;
+			unsigned short int tmp[2];
+			tmp[1] = dp->starthi;
+			tmp[0] = dp->start;
+			unsigned int fcn = *((unsigned int *)(tmp));
+			datetime dt = read_datetime(dp->date, dp->time);
+			if ( dp->attr != 0x10 && dp->attr != 0x08) { // file (not root or subdirectory)
+				char ext[4];	
+				int extlen = str_trimcopy(ext, (char *) &(dp->name[8]), 3);
+				namelen = str_concat(name, namelen, ".", 1);
+				namelen = str_concat(name, namelen, ext, extlen);
+				printf("(f) name=%-15sfcn=%-10usize(bytes)=%-10udate=%u-%u-%u %u:%u:%u\n", name, fcn, dp->size, dt.year, dt.month, dt.day, dt.hour, dt.minute, dt.second);
+			}
+			else if (dp->attr == (unsigned char) 0x10) { // subdirectory
+				printf("(d) name=%-15sfcn=%-10usize(bytes)=%-10udate=%u-%u-%u %u:%u:%u\n", name, fcn, dp->size, dt.year, dt.month, dt.day, dt.hour, dt.minute, dt.second);
+			}
+		}
+		dp++;
+	}
+	
+}
 
 
-
+/*
 // 4. fat DISKIMAGE -t
 void print_name_recursive(int fd, int cnum, unsigned char* buf){
 	struct msdos_dir_entry* cluster;
@@ -372,3 +521,4 @@ unsigned int find_start(unsigned short int start, unsigned short int starthi){
 	start_address = start_address | tmp3;
 	return start_address;
 }
+*/
