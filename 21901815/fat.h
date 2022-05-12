@@ -5,6 +5,7 @@
 #include <linux/msdos_fs.h>
 #include <ctype.h>
 #include <stdlib.h>
+#include <math.h>
 
 #define CLUSTER_SIZE 1024 // cluster size in bytes
 #define SECTOR_SIZE 512 // sector size in bytes
