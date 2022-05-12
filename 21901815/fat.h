@@ -73,6 +73,8 @@ void traverse(unsigned int dir_cluster, char path[120], unsigned int pathlen);
 void print_file_content(char *path);
 void print_file_bytes(char *path);
 void list_dir(char *path);
+void read_volume_map(unsigned int dir_cluster, char path[120], unsigned int pathlen, char **map, unsigned int *fat);
+
 
 unsigned int find_start(unsigned short int start, unsigned short int starthi);
 
@@ -116,11 +118,6 @@ int readcluster (int fd, unsigned char *buf, unsigned int cnum) {
 }
 
 // our own implementation of some string operations (which we preferred not to use)
-
-// copies str2 into str
-void str_copy(char *str, char* str2, unsigned int str2len) { 
-	
-}
 
 // copies str2 into str while trimming trailing spaces
 // returns new length after trim
@@ -178,3 +175,5 @@ datetime read_datetime(unsigned short int date, unsigned short int time) {
 	dt.year = 1980 + ((date & 0xFE00) >> 9); // 1111 1110 0000 0000
 	return dt;
 }
+
+void traverse_in_fat(char *path, unsigned int first, char **map, unsigned int *fat);

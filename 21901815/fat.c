@@ -37,9 +37,49 @@ int main(int argc, char** argv) {
 	else if (strcmp(p.mode, "-l") == 0) {
 		list_dir(argv[3]);
 	}
+
 	else if (strcmp(p.mode, "-d") == 0){
 		print_info(argv[3]);
 	}
+
+	// ...
+	else if (strcmp(p.mode, "-m") == 0) {
+		readsector(fd, sector, 0);
+		struct fat_boot_sector *bp = (struct fat_boot_sector *) sector;
+		unsigned int fat_size = bp->fat32.length * ((unsigned short int *) bp->sector_size)[0];
+		char **map = calloc(fat_size / 4, sizeof(char *));
+		unsigned int *fat = malloc(fat_size);
+		read_fat(fat, bp->fat32.length, ((unsigned short int *) bp->sector_size)[0] / 4);
+		readsector(fd, sector, 0);
+		traverse_in_fat("/", bp->fat32.root_cluster, map, fat);
+		read_volume_map(bp->fat32.root_cluster, "/", 1, map, fat);
+		unsigned int i;
+		unsigned int last_entry;
+		if (strcmp(argv[3], "-1") == 0) {
+			last_entry = fat_size / 4;
+		}
+		else {
+			printf("num : %d\n", atoi(argv[3]));
+			last_entry = atoi(argv[3]);
+		}
+		
+		for (i = 0; i < last_entry; i++) {
+			if (i < 2) {
+				printf("%8d: --EOF--\n", i);
+			}
+			else if (map[i] == 0) {
+				printf("%8d: --FREE--\n", i);
+			}
+			else {
+				printf("%8d: %s\n", i, map[i]);
+			}
+		}
+		
+		free(fat);
+		free(map);
+	}
+	
+
 	// always check the return values
 	//int i;
 	
@@ -159,9 +199,6 @@ void traverse(unsigned int dir_cluster, char path[120], unsigned int pathlen) {
 	readsector(fd, sector, 0);
 	struct fat_boot_sector *bp = (struct fat_boot_sector *) sector; 
 	unsigned int dentry_per_clus = ((unsigned short int *) bp->sector_size)[0] * bp->sec_per_clus / 32;
-
-	subdirectory subdirs[25];
-	unsigned int subdir_count = 0;
 	
 	readcluster(fd, cluster, dir_cluster);
 	
@@ -200,20 +237,7 @@ void traverse(unsigned int dir_cluster, char path[120], unsigned int pathlen) {
 		}
 		dp++;
 	}
-	
-	
-	/*
-	char nextpath[120];
-	str_trimcopy(nextpath, path, pathlen);
-	for (i = 0; i < subdir_count; i++) {
-		unsigned int nextlen = str_concat(nextpath, pathlen, subdirs[i].name, subdirs[i].namelen);
-		nextlen = str_concat(nextpath, nextlen, "/", 1); 
-		printf("(d) %s\n", nextpath);
-		if (subdirs[i].name[0] != '.') {
-			traverse(subdirs[i].cluster, nextpath, nextlen);
-		}
-	}
-	*/
+
 }
 
 void read_fat(unsigned int *arr, unsigned int fat_sectors, unsigned int entries_per_sector) {
@@ -306,7 +330,6 @@ void print_file_content(char *path) {
 		//printf("cluster %d\n", cluster_no);
 	} 
 }
-
 
 // ./fat DISKIMAGE -b PATH
 void print_file_bytes(char* path) {
@@ -451,6 +474,7 @@ void list_dir(char *path) {
 	
 }
 
+
 // 13) fat -h
 void print_help(){
 	printf("./fat disk1 -v\n");
@@ -531,6 +555,73 @@ void print_info(char* path){
 	datetime date = read_datetime(dp->date, dp->time);
 	printf("date=\t%d-%d-%d\n", date.day, date.month, date.year);
 	printf("time=\t%d:%d\n",date.hour ,date.minute );
+
+// 8 9 10 11
+void traverse_in_fat(char *path, unsigned int first, char **map, unsigned int *fat) {
+	//printf("traverse_in_fat() before %s\n", path);
+	unsigned int clus = first;
+	while (clus != 0 && clus < 0x0ffffff7) {
+		map[clus] = malloc(sizeof(char) * 120);
+		str_trimcopy(map[clus], path, strlen(path));
+		//printf("traverse_in_fat() %s in %d: %s\n", path, clus, map[clus]);
+		clus = fat[clus];
+		
+	}
+}
+
+
+void read_volume_map(unsigned int dir_cluster, char path[120], unsigned int pathlen, char **map, unsigned int *fat) {
+	printf("read_volume_map()\n");
+	readsector(fd, sector, 0);
+	struct fat_boot_sector *bp = (struct fat_boot_sector *) sector; 
+	unsigned int dentry_per_clus = ((unsigned short int *) bp->sector_size)[0] * bp->sec_per_clus / 32;
+
+	readcluster(fd, cluster, dir_cluster);
+	struct msdos_dir_entry *dp = (struct msdos_dir_entry *) cluster;
+	unsigned int i;
+	for (i = 0; i < dentry_per_clus; i++) {
+		
+		if ((unsigned char) dp->name[0] != (unsigned char) 0x00 && (unsigned char) dp->name[0] != (unsigned char) 0xe5) { // dir entry is used (not uninitialized or deleted)
+			char name[9];
+			int namelen = str_trimcopy(name, (char *) &(dp->name[0]), 8);;
+			if ( dp->attr != 0x10 && dp->attr != 0x08) { // file (not root or subdirectory)
+				char ext[4];	
+				str_trimcopy(ext, (char *) &(dp->name[8]), 3);		
+				printf("(f) %s%s.%s\n", path, name, ext);
+				char fpath[120];
+				str_trimcopy(fpath, path, pathlen);
+				unsigned int nextlen = str_concat(fpath, pathlen, name, strlen(name));
+				nextlen = str_concat(fpath, nextlen, ".", 1);
+				nextlen = str_concat(fpath, nextlen, ext, strlen(ext));
+				unsigned short int tmp[2];
+				tmp[1] = dp->starthi;
+				tmp[0] = dp->start;
+				unsigned int nextclus = *((unsigned int *)(tmp));
+				traverse_in_fat(fpath, nextclus, map, fat);
+			}
+			else if ((char) dp->name[0] == '.') {// dentry to self or parent, just print (don't traverse)
+				printf("(d) %s%s\n", path, name);
+			}
+			else if (dp->attr == (unsigned char) 0x10) { // subdirectory
+				// save directory cluster to recursion queue
+				unsigned short int tmp[2];
+				tmp[1] = dp->starthi;
+				tmp[0] = dp->start;
+				unsigned int nextclus = *((unsigned int *)(tmp));
+				char nextpath[120];
+				str_trimcopy(nextpath, path, pathlen);
+				unsigned int nextlen = str_concat(nextpath, pathlen, name, namelen);
+				nextlen = str_concat(nextpath, nextlen, "/", 1);
+				printf("(d) %s\n", nextpath);
+				traverse_in_fat(nextpath, nextclus, map, fat);
+				read_volume_map(nextclus, nextpath, nextlen, map, fat);
+				readcluster(fd, cluster, dir_cluster);
+			}
+		}
+		dp++;
+	}
+	
+
 }
 
 /*
