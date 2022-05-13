@@ -671,7 +671,7 @@ void print_dentry_info(char* path) {
 	readsector(fd, sector, 0);
 	struct fat_boot_sector *bp = (struct fat_boot_sector *) sector;
 	unsigned int cluster_no = bp->fat32.root_cluster;
-	char name[9] = "ROOT    ";
+	char name[9];
 	unsigned short int tmp[2];
 	struct msdos_dir_entry *dp;
 	unsigned int dentry_per_clus = ((unsigned short int *) bp->sector_size)[0]  * bp->sec_per_clus / 32;
@@ -707,6 +707,9 @@ void print_dentry_info(char* path) {
 		dp = (struct msdos_dir_entry *) cluster;
 	}
 	
+	if (current_loc == 0){
+		str_trimcopy(name, (char *) &(dp->name[0]), 8);
+	}
 	printf("name         = %s\n", name);
 	//printf("attr         = %u\n", dp->attr);
 	
