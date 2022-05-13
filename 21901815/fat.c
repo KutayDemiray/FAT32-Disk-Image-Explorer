@@ -8,11 +8,20 @@ int main(int argc, char** argv) {
 	params p;
 	p.diskimage = malloc(100 * sizeof(char));
 	p.mode = malloc(3 * sizeof(char));
+	
 	//unsigned char sector[SECTOR_SIZE];
 	//unsigned char cluster[CLUSTER_SIZE];
+	if (strcmp(argv[1], "-h") == 0) {
+		print_help();
+		free(p.diskimage);
+		free(p.mode);
+		return 0;
+	}
 	str_trimcopy(p.diskimage, argv[1], strlen(argv[1]));
 	str_trimcopy(p.mode, argv[2], 2);
+	
 	fd = open(p.diskimage, O_SYNC | O_RDONLY); // disk fd
+	
 	
 	if (strcmp(p.mode, "-v") == 0) {
 		print_image_info();
@@ -73,7 +82,15 @@ int main(int argc, char** argv) {
 		path[++i] = '\0';
 		print_dentry_info(path);
 	}
-
+	else if (strcmp(p.mode, "-r") == 0) {
+		char path[120];
+		int i;
+		for (i = 0; i < strlen(argv[3]); i++) {
+			path[i] = toupper(argv[3][i]);
+		}
+		path[++i] = '\0';
+		print_file_from_offset(path, atoi(argv[4]), atoi(argv[5]));
+	}
 	// ...
 	else if (strcmp(p.mode, "-m") == 0) {
 		readsector(fd, sector, 0);
@@ -617,6 +634,21 @@ void print_cluster_indices(char *path) {
 
 // 13) fat -h
 void print_help(){
+	printf("Commands:\n");
+	printf("./fat <diskimage> -v: Prints volume info\n");
+	printf("./fat <diskimage> -s <sectorno>: Prints given sector\n");
+	printf("./fat <diskimage> -c <clusterno>: Prints given cluster\n");
+	printf("./fat <diskimage> -t: Starting from root, traverses the directory tree (in DFT order)\n");
+	printf("./fat <diskimage> -a <path>: Prints contents of given ASCII text file\n");
+	printf("./fat <diskimage> -b <path>: Prints byte sequence of given file\n");
+	printf("./fat <diskimage> -l <path>: Prints the names of files and subdirectories in given directory\n");
+	printf("./fat <diskimage> -n <path>: Prints the cluster numbers storing the contents of given file or directory\n");
+	printf("./fat <diskimage> -d <path>: Prints the directory entry information (name, type etc.) of the given file\n");
+	printf("./fat <diskimage> -f <count>: Prints the contents of FAT table, starting from the beginning up to the given number of entries\n");
+	printf("./fat <diskimage> -r <path> <offset> <count>: Starting from given offset, prints specified amount of bytes in given file\n");
+	printf("./fat <diskimage> -m <count>: Prints specified number of rows of a map of the volume\n");
+	printf("./fat -h: Prints this help information\n");
+	printf("Examples:\n");
 	printf("./fat disk1 -v\n");
 	printf("./fat disk1 -s 32\n");
 	printf("./fat disk1 -c 2\n");
@@ -693,7 +725,7 @@ void print_dentry_info(char* path) {
 	printf("clustercount = %u\n", ccount);
 	printf("size(bytes)  = %u\n", dp->size);
 	datetime date = read_datetime(dp->date, dp->time);
-	printf("date         = %d-%02d-%02d\n", date.day, date.month, date.year);
+	printf("date         = %02d-%02d-%d\n", date.day, date.month, date.year);
 	printf("time         = %02d:%02d\n",date.hour ,date.minute );
 	free(tokens);
 }
@@ -727,8 +759,122 @@ void print_fat(int count){
 	free(arr);
 }
 
-// 8 9 10 11
+// ./fat DISKIMAGE -r PATH OFFSET COUNT
+void print_file_from_offset(char *path, int offset, int count) {
+	char str[120];
+	str_trimcopy(str, path, strlen(path)); 
+	char **names = malloc(11 * sizeof(char *)); // max directory tree depth is 10 (+ 1 for good measure)
+	
+	unsigned int namecount = path_split(names, str, "/");
+	//printf("namecount: %d\n", namecount);
+	readsector(fd, sector, 0);
+	struct fat_boot_sector *bp = (struct fat_boot_sector *) sector;
+	unsigned int cluster_no = bp->fat32.root_cluster;
+	unsigned int dentry_per_clus = ((unsigned short int *) bp->sector_size)[0]  * bp->sec_per_clus / 32;
+	
+	// get to the directory containing file
+	int i, j, cur = 0;
+	char name[13];
+	for (i = 0; i < namecount - 1; i++) {
+		readcluster(fd, cluster, cluster_no);
+		//printf("read %u\n", cluster_no);
+		struct msdos_dir_entry *dp = (struct msdos_dir_entry *) cluster;
+		for (j = 0; j < dentry_per_clus; j++) {
+			str_trimcopy(name, (char *)dp->name, 8);
+			if (strcmp(name, names[cur]) == 0) { // found directory entry with next directory
+				//printf("found %s\n", name);
+				unsigned short int tmp[2];
+				tmp[1] = dp->starthi;
+				tmp[0] = dp->start;
+				cluster_no = *((unsigned int *)(tmp));
+				cur++;
+				//printf("next to find: %s\n", names[cur]);
+				break;
+			}
+			dp++;
+		}
+	}
+	 
+	// get to the first cluster of the file
+	readcluster(fd, cluster, cluster_no);
+	//printf("===\n\n");
+	struct msdos_dir_entry *dp = (struct msdos_dir_entry *) cluster;
+	char ext[4];
+	for (j = 0; j < dentry_per_clus; j++) {
+		str_trimcopy(name, (char *) dp->name, 8);
+		str_trimcopy(ext, (char *) &(dp->name[8]), 3);
+		//printf("ext %s\n", ext);
+		str_concat(name, strlen(name), ".", 1);
+		str_concat(name, strlen(name), ext, strlen(ext));
+		//printf("name %s\n", name);
+		if (strcmp(name, names[cur]) == 0) { // found directory entry with next directory
+			//printf("found %s\n", name);
+			unsigned short int tmp[2];
+			tmp[1] = dp->starthi;
+			tmp[0] = dp->start;
+			cluster_no = *((unsigned int *)(tmp));
+			cur++;
+			break;
+		}
+		dp++;
+	}
+	
+	//printf("file first cluster %u\n", cluster_no);
+	// at the start of file
+	unsigned int *fat;
+	readsector(fd, sector, 0);
+	bp = (struct fat_boot_sector *) sector;
+	unsigned int fat_size = bp->fat32.length * ((unsigned short int *) bp->sector_size)[0];
+	fat = malloc(fat_size);
+	read_fat(fat, bp->fat32.length, ((unsigned short int *) bp->sector_size)[0] / 4);
+	
+	readcluster(fd, cluster, cluster_no);
+	//printf("offset: %d, count: %d\n", offset, count);
+	char buf[16];
+	readsector(fd, sector, 0);
+	unsigned int cluster_size = bp->sec_per_clus * *((unsigned int *) bp->sector_size);
+	int row_index = 0;
+	int row_len = ((count - i) < 16) ? count - i : 16;
+	for (i = 0; i < count; i++) {
+		if (i % 16 == 0) {
+			printf("%08x: ", i + offset);
+			row_len = ((count - i) < 16) ? count - i : 16;
+			//printf("row len: %d :  ", row_len);
+		}
+		//printf("%: %d\n", (i + offset) % cluster_size );
+		if ((i + offset) % cluster_size == 0) {
+			cluster_no = fat[cluster_no];
+			readcluster(fd, cluster, cluster_no);
+		}
+		
+		buf[row_index] = cluster[(i + offset) % CLUSTER_SIZE]; 
+		printf("%02x ", buf[row_index++]);
+		
+		if (row_index == row_len) {
+			for (; row_index < 16; row_index++) {
+				printf("   ");
+			}
+		}
+		
+		if (row_index == 16) {
+			for (j = 0; j < row_len; j++) {
+				if (isprint(buf[j])) {
+					printf("%c", buf[j]);
+				}
+				else {
+					printf(".");
+				}
+			}
+			row_index = 0;
+			printf("\n");
+		}
+	}
 
+	free(names);
+	free(fat);
+}
+
+// ./fat DISKIMAGE -m COUNT
 void traverse_in_fat(char *path, unsigned int first, char **map, unsigned int *fat) {
 	//printf("traverse_in_fat() before %s\n", path);
 	unsigned int clus = first;
