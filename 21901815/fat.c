@@ -676,7 +676,7 @@ void print_help(){
 // 9) ./fat DISKIMAGE -d PATH
 void print_dentry_info(char* path) {
 	char str[120];
-	printf("strlen(path): %u\n", strlen(path));
+	//printf("strlen(path): %u\n", strlen(path));
 	str_trimcopy(str, path, strlen(path)); 
 	char **tokens = malloc(11 * sizeof(char *)); // max directory tree depth is 10 (+ 1 for good measure)
 	
@@ -697,6 +697,8 @@ void print_dentry_info(char* path) {
 	dp = (struct msdos_dir_entry *) cluster;
 	while (current_loc < token_cnt){
 		int i;
+		readcluster(fd, cluster, cluster_no);
+		dp = (struct msdos_dir_entry *) cluster;
 		for (i = 0; i<dentry_per_clus; i++){
 			//name[8] = '\0';
 			str_trimcopy(name, (char *) &(dp->name[0]), 8);
@@ -712,25 +714,19 @@ void print_dentry_info(char* path) {
 				str_concat(name, strlen(name), ".", 1);
 				str_concat(name, strlen(name), ext, strlen(ext));
 			}
-			
+			//printf("name %s tok %s\n", name, tokens[current_loc]);
 			if (strcmp(tokens[current_loc], name)==0){
 				current_loc++;
 				tmp[1] = dp->starthi;
 				tmp[0] = dp->start;
 				cluster_no = *((unsigned int *)(tmp));
-				if (current_loc++ >= token_cnt) {
-				
-				}
 				break;
 			}
-			else{
-				dp++;
-			}
+			dp++;
 		}
-		if (current_loc++ < token_cnt) {
-			readcluster(fd, cluster, cluster_no);
-			dp = (struct msdos_dir_entry *) cluster;
-		}
+		//if (current_loc++ < token_cnt) {
+			
+		//}
 		
 	}
 	
@@ -795,9 +791,9 @@ void print_fat(int count){
 	int i;
 	for (i = 0; i<count; i++){
 		if (arr[i] <(unsigned int) 0x0ffffff7 )
-			printf("%07d: %u\n", i, arr[i]);
+			printf("%07u: %u\n", i, arr[i]);
 		else
-			printf("%07d: EOF\n",i);
+			printf("%07u: EOF\n",i);
 	}
 	free(arr);
 }
