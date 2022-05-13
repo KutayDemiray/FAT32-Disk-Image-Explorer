@@ -72,6 +72,7 @@ void traverse(unsigned int dir_cluster, char path[120], unsigned int pathlen);
 void print_file_content(char *path);
 void print_file_bytes(char *path);
 void list_dir(char *path);
+void print_cluster_indices(char *path);
 void read_volume_map(unsigned int dir_cluster, char path[120], unsigned int pathlen, char **map, unsigned int *fat);
 
 
