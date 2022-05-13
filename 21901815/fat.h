@@ -76,6 +76,7 @@ void list_dir(char *path);
 void print_cluster_indices(char *path);
 void read_volume_map(unsigned int dir_cluster, char path[120], unsigned int pathlen, char **map, unsigned int *fat);
 void print_dentry_info(char *path);
+void print_fat(int entries);
 
 
 unsigned int find_start(unsigned short int start, unsigned short int starthi);
