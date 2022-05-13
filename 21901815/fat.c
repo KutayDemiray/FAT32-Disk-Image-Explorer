@@ -676,6 +676,7 @@ void print_help(){
 // 9) ./fat DISKIMAGE -d PATH
 void print_dentry_info(char* path) {
 	char str[120];
+	printf("strlen(path): %u\n", strlen(path));
 	str_trimcopy(str, path, strlen(path)); 
 	char **tokens = malloc(11 * sizeof(char *)); // max directory tree depth is 10 (+ 1 for good measure)
 	
@@ -685,7 +686,7 @@ void print_dentry_info(char* path) {
 	readsector(fd, sector, 0);
 	struct fat_boot_sector *bp = (struct fat_boot_sector *) sector;
 	unsigned int cluster_no = bp->fat32.root_cluster;
-	char name[9];
+	char name[12];
 	unsigned short int tmp[2];
 	struct msdos_dir_entry *dp;
 	unsigned int dentry_per_clus = ((unsigned short int *) bp->sector_size)[0]  * bp->sec_per_clus / 32;
@@ -697,12 +698,19 @@ void print_dentry_info(char* path) {
 	while (current_loc < token_cnt){
 		int i;
 		for (i = 0; i<dentry_per_clus; i++){
-			name[8] = '\0';
+			//name[8] = '\0';
 			str_trimcopy(name, (char *) &(dp->name[0]), 8);
-			str_trimcopy(ext, (char*)&(dp->name[8]), 3);
+			
+			/*
 			if (strcmp(ext, "")!=0){
-				strcat(name, ".");
-				strcat(name, ext);
+				str_concat(name, strlen(name), ".", 1);
+				str_concat(name, strlen(name), ext, strlen(ext));
+			}
+			*/
+			if (dp->attr != 0x08 && dp->attr != 0x10) {
+				str_trimcopy(ext, (char*)&(dp->name[8]), 3);
+				str_concat(name, strlen(name), ".", 1);
+				str_concat(name, strlen(name), ext, strlen(ext));
 			}
 			
 			if (strcmp(tokens[current_loc], name)==0){
@@ -710,15 +718,20 @@ void print_dentry_info(char* path) {
 				tmp[1] = dp->starthi;
 				tmp[0] = dp->start;
 				cluster_no = *((unsigned int *)(tmp));
+				if (current_loc++ >= token_cnt) {
+				
+				}
 				break;
 			}
 			else{
 				dp++;
 			}
 		}
+		if (current_loc++ < token_cnt) {
+			readcluster(fd, cluster, cluster_no);
+			dp = (struct msdos_dir_entry *) cluster;
+		}
 		
-		readcluster(fd, cluster, cluster_no);
-		dp = (struct msdos_dir_entry *) cluster;
 	}
 	
 	if (current_loc == 0){
@@ -733,16 +746,30 @@ void print_dentry_info(char* path) {
 		printf("type         = FILE\n");
 	
 	printf("firstcluster = %u\n", cluster_no);
-	unsigned int ccount;
+	unsigned int ccount = 0;
+	/*
 	if (dp->size %1024 == 0)
 		ccount = dp->size /1024;
 	else 
 		ccount = dp->size/1024 + 1;
+	*/
+	readsector(fd, sector, 0);
+	unsigned int *fat = malloc(bp->fat32.length * SECTOR_SIZE);
+	read_fat(fat, bp->fat32.length, ((unsigned short int *) bp->sector_size)[0] / 4);
+	readsector(fd, sector, 0);
+	while (cluster_no != 0 && cluster_no < 0x0ffffff7) {
+		//printf("%u %u\n", cluster_no, fat[cluster_no]);
+		ccount++;
+		cluster_no = fat[cluster_no];
+	} 	
+	
+	
 	printf("clustercount = %u\n", ccount);
 	printf("size(bytes)  = %u\n", dp->size);
 	datetime date = read_datetime(dp->date, dp->time);
-	printf("date         = %02d-%02d-%d\n", date.day, date.month, date.year);
-	printf("time         = %02d:%02d:%02d\n",date.hour ,date.minute, date.second );
+	printf("date         = %02u-%02u-%u\n", date.day, date.month, date.year);
+	printf("time         = %02u:%02u:%02u\n",date.hour ,date.minute, date.second );
+	free(fat);
 	free(tokens);
 }
 
