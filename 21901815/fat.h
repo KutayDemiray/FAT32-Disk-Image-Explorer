@@ -5,6 +5,7 @@
 #include <linux/msdos_fs.h>
 #include <ctype.h>
 #include <stdlib.h>
+#include <math.h>
 
 #define CLUSTER_SIZE 1024 // cluster size in bytes
 #define SECTOR_SIZE 512 // sector size in bytes
@@ -74,6 +75,7 @@ void print_file_bytes(char *path);
 void list_dir(char *path);
 void print_cluster_indices(char *path);
 void read_volume_map(unsigned int dir_cluster, char path[120], unsigned int pathlen, char **map, unsigned int *fat);
+void print_dentry_info(char *path);
 
 
 unsigned int find_start(unsigned short int start, unsigned short int starthi);
