@@ -22,7 +22,9 @@ int main(int argc, char** argv) {
 	
 	fd = open(p.diskimage, O_SYNC | O_RDONLY); // disk fd
 	
-	
+	readsector(fd, sector, 0);
+	struct fat_boot_sector *bp = (struct fat_boot_sector *) sector;
+	fat_length_in_sectors = bp->fat32.length;
 	if (strcmp(p.mode, "-v") == 0) {
 		print_image_info();
 	}
@@ -145,19 +147,13 @@ void print_image_info() {
 	readsector(fd, sector, 0);
 	struct fat_boot_sector *bp = (struct fat_boot_sector *) sector;
 	
-	char fs_type[FS_TYPE_SIZE + 1]; 
-	int i;
-	for (i = 0; i < FS_TYPE_SIZE; i++) {
-		fs_type[i] = bp->fat32.fs_type[i];
-	}
-	fs_type[FS_TYPE_SIZE] = '\0';
+	char fs_type[9]; 
+
+	str_trimcopy(fs_type, (char *)bp->fat32.fs_type, 8);
 	printf("File system type: %s\n", fs_type);
 	
-	char vol_label[VOLUME_LABEL_SIZE + 1];
-	for (i = 0; i < VOLUME_LABEL_SIZE; i++) {
-		vol_label[i] = bp->fat32.vol_label[i];
-	}
-	vol_label[VOLUME_LABEL_SIZE] = '\0';
+	char vol_label[12];
+	str_trimcopy(vol_label, (char *)bp->fat32.vol_label, 11);
 	printf("Volume label: %s\n", vol_label);
 	
 	printf("Number of sectors in disk: %u\n", bp->total_sect);  
@@ -726,7 +722,7 @@ void print_dentry_info(char* path) {
 	printf("size(bytes)  = %u\n", dp->size);
 	datetime date = read_datetime(dp->date, dp->time);
 	printf("date         = %02d-%02d-%d\n", date.day, date.month, date.year);
-	printf("time         = %02d:%02d\n",date.hour ,date.minute );
+	printf("time         = %02d:%02d:%02d\n",date.hour ,date.minute, date.second );
 	free(tokens);
 }
 
