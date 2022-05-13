@@ -37,7 +37,6 @@ int main(int argc, char** argv) {
 	else if (strcmp(p.mode, "-l") == 0) {
 		list_dir(argv[3]);
 	}
-
 	else if (strcmp(p.mode, "-d") == 0){
 		print_info(argv[3]);
 	}
@@ -78,7 +77,9 @@ int main(int argc, char** argv) {
 		free(fat);
 		free(map);
 	}
-	
+	else if (strcmp(p.mode, "-f")==0){
+		print_fat(atoi(argv[3]));
+	}
 
 	// always check the return values
 	//int i;
@@ -512,18 +513,17 @@ void print_info(char* path){
 	while (current_loc < token_cnt){
 		int i;
 		readcluster(fd, cluster, cluster_no);
-	
 		dp = (struct msdos_dir_entry *) cluster;
 		
 		for (i = 0; i<dentry_per_clus; i++){
 			name[8] = '\0';
-		
 			str_trimcopy(name, (char *) &(dp->name[0]), 8);
 			str_trimcopy(ext, (char*)&(dp->name[8]), 3);
 			if (strcmp(ext, "")!=0){
 				strcat(name, ".");
 				strcat(name, ext);
 			}
+			
 			if (strcmp(tokens[current_loc], name)==0){
 				current_loc++;
 				tmp[1] = dp->starthi;
@@ -537,7 +537,6 @@ void print_info(char* path){
 		}
 	}
 	printf("name=\t%s\n", name);
-	printf("attr=\t%u\n", dp->attr);
 	
 	if (dp-> attr == 0x08 || dp->attr == 0x10)
 		printf("type=\tDIRECTORY\n");
@@ -555,6 +554,38 @@ void print_info(char* path){
 	datetime date = read_datetime(dp->date, dp->time);
 	printf("date=\t%d-%d-%d\n", date.day, date.month, date.year);
 	printf("time=\t%d:%d\n",date.hour ,date.minute );
+	
+}
+
+// 10) ./fat DISKIMAGE -f COUNT
+void print_fat(int count){
+	readsector(fd, sector, 0);
+	struct fat_boot_sector *bp = (struct fat_boot_sector *) sector; 
+	unsigned int sector_entries = ((unsigned short int *) bp->sector_size)[0] / 4;
+	int sector_count;
+	if (count == -1){
+		count = bp->fat32.length * sector_entries;
+		sector_count = bp->fat32.length;
+	}	
+	else if (count % 32 == 0)
+		sector_count = (count/32);
+	else 
+		sector_count = (count/32)+1;
+	
+	// read fat and then print
+	unsigned int* arr = malloc (sector_count * ((unsigned short int *) bp->sector_size)[0]);
+	read_fat(arr, sector_count, sector_entries);
+	//print the data
+	int i;
+	for (i = 0; i<count; i++){
+		if (arr[i] <(unsigned int) 0x0ffffff7 )
+			printf("%07d: %u\n", i, arr[i]);
+		else
+			printf("%07d: EOF\n",i);
+	}
+	free(arrmake);
+}
+
 
 // 8 9 10 11
 void traverse_in_fat(char *path, unsigned int first, char **map, unsigned int *fat) {
