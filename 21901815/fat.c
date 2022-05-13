@@ -168,7 +168,7 @@ void print_image_info() {
 	
 	printf("Number of sectors per cluster: %u\n", bp->sec_per_clus);
 	
-	unsigned int cluster_count = (bp->total_sect - bp->fats * bp->fat32.length - bp->reserved) / bp->sec_per_clus;
+	unsigned int cluster_count = (bp->fat32.length * SECTOR_SIZE) / 4;
 	printf("Number of clusters: %u\n", cluster_count);
 	
 	printf("Data region starts at sector: %u\n", bp->reserved + bp->fats * bp->fat32.length);
@@ -181,11 +181,25 @@ void print_image_info() {
 	
 	printf("Disk size in megabytes: %u MB\n", (((unsigned short int *) bp->sector_size)[0] * bp->total_sect) >> 20);
 	
-	readsector(fd, sector, 1);
-	struct fat_boot_fsinfo * ip = (struct fat_boot_fsinfo *) sector;
-	printf("Number of used clusters: %u\n", cluster_count - ip->free_clusters);
+	unsigned int *fat = malloc(bp->fat32.length * SECTOR_SIZE);
+	readsector(fd, sector, 0);
+	read_fat(fat, bp->fat32.length, SECTOR_SIZE / 4);
 	
-	printf("Number of free clusters: %u\n", ip->free_clusters); 
+	unsigned int i;
+	unsigned int used_count = 0;
+	
+	
+	for (i = 0; i < cluster_count; i++) {
+		//printf("%u\n", fat[i]);
+		if (fat[i] != 0) {
+			used_count++;
+		}
+	}
+	free(fat);
+	 
+	printf("Number of used clusters: %u\n", used_count);
+	
+	printf("Number of free clusters: %u\n", cluster_count - used_count); 
 	
 }
 
