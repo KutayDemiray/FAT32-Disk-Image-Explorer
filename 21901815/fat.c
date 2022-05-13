@@ -110,7 +110,7 @@ int main(int argc, char** argv) {
 			last_entry = fat_size / 4;
 		}
 		else {
-			printf("num : %d\n", atoi(argv[3]));
+			//printf("num : %d\n", atoi(argv[3]));
 			last_entry = atoi(argv[3]);
 		}
 		
@@ -361,7 +361,7 @@ void print_file_content(char *path) {
 		unsigned int extlen = str_trimcopy(ext, (char *) (&(dp->name[8])), 3);
 		//printf("ext %s\n", ext);
 		namelen = str_concat(name, namelen, ".", 1);
-		namelen = str_concat(name, namelen, ext, extlen);
+		namelen = str_concat(name, strlen(name), ext, strlen(ext));
 		//printf("name %s\n", name);
 		if (strcmp(name, names[cur]) == 0) { // found directory entry with next directory
 			//printf("found %s\n", name);
