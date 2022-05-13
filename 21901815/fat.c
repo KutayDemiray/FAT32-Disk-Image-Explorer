@@ -928,7 +928,7 @@ void traverse_in_fat(char *path, unsigned int first, char **map, unsigned int *f
 
 
 void read_volume_map(unsigned int dir_cluster, char path[120], unsigned int pathlen, char **map, unsigned int *fat) {
-	printf("read_volume_map()\n");
+	//printf("read_volume_map()\n");
 	readsector(fd, sector, 0);
 	struct fat_boot_sector *bp = (struct fat_boot_sector *) sector; 
 	unsigned int dentry_per_clus = ((unsigned short int *) bp->sector_size)[0] * bp->sec_per_clus / 32;
@@ -944,7 +944,7 @@ void read_volume_map(unsigned int dir_cluster, char path[120], unsigned int path
 			if ( dp->attr != 0x10 && dp->attr != 0x08) { // file (not root or subdirectory)
 				char ext[4];	
 				str_trimcopy(ext, (char *) &(dp->name[8]), 3);		
-				printf("(f) %s%s.%s\n", path, name, ext);
+				//printf("(f) %s%s.%s\n", path, name, ext);
 				char fpath[120];
 				str_trimcopy(fpath, path, pathlen);
 				unsigned int nextlen = str_concat(fpath, pathlen, name, strlen(name));
@@ -957,7 +957,7 @@ void read_volume_map(unsigned int dir_cluster, char path[120], unsigned int path
 				traverse_in_fat(fpath, nextclus, map, fat);
 			}
 			else if ((char) dp->name[0] == '.') {// dentry to self or parent, just print (don't traverse)
-				printf("(d) %s%s\n", path, name);
+				//printf("(d) %s%s\n", path, name);
 			}
 			else if (dp->attr == (unsigned char) 0x10) { // subdirectory
 				// save directory cluster to recursion queue
@@ -969,7 +969,7 @@ void read_volume_map(unsigned int dir_cluster, char path[120], unsigned int path
 				str_trimcopy(nextpath, path, pathlen);
 				unsigned int nextlen = str_concat(nextpath, pathlen, name, namelen);
 				nextlen = str_concat(nextpath, nextlen, "/", 1);
-				printf("(d) %s\n", nextpath);
+				//printf("(d) %s\n", nextpath);
 				traverse_in_fat(nextpath, nextclus, map, fat);
 				read_volume_map(nextclus, nextpath, nextlen, map, fat);
 				readcluster(fd, cluster, dir_cluster);
